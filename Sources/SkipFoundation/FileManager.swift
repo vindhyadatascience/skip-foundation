@@ -88,12 +88,16 @@ public class FileManager {
         var attrs: [FileAttributeKey: Any] = [FileAttributeKey: Any]()
         let battrs = java.nio.file.Files.readAttributes(p, java.nio.file.attribute.BasicFileAttributes.self.java)
 
+        // The size is an Int64 (Kotlin Long), so read it with `as? Int64` (which also works on
+        // Apple's NSNumber); `as? Int` is nil here because Skip's Int is a 32-bit Kotlin Int.
         let size = battrs.size()
         attrs[FileAttributeKey.size] = size
         let creationTime = battrs.creationTime()
         attrs[FileAttributeKey.creationDate] = Date(java.util.Date(creationTime.toMillis()))
         let lastModifiedTime = battrs.lastModifiedTime()
-        attrs[FileAttributeKey.modificationDate] = Date(java.util.Date(creationTime.toMillis()))
+        // VDS fork (vds.1): upstream built modificationDate from creationTime, so a file rewritten
+        // in place kept its first-write date.
+        attrs[FileAttributeKey.modificationDate] = Date(java.util.Date(lastModifiedTime.toMillis()))
         //let lastAccessTime = battrs.lastAccessTime()
 
         let isDirectory = battrs.isDirectory()
