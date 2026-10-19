@@ -60,4 +60,33 @@ final class FileManagerTests: XCTestCase {
         XCTAssertEqual("cache", url.lastPathComponent)
         #endif
     }
+    // VDS fork (vds.1): modificationDate must be the last-modified time, not the creation time.
+    // A future date is used because macOS moves a file's birth time back to an earlier mtime, which
+    // would make the creation time equal the set date and hide the bug.
+    func testModificationDateIsLastModifiedTime() throws {
+        let fm = FileManager.default
+        let path = NSTemporaryDirectory() + "vds-mtime-\(UUID().uuidString).txt"
+        defer { try? fm.removeItem(atPath: path) }
+        XCTAssertTrue(fm.createFile(atPath: path, contents: "first".data(using: .utf8), attributes: nil))
+        let created = try XCTUnwrap(try fm.attributesOfItem(atPath: path)[FileAttributeKey.creationDate] as? Date)
+
+        let later = Date(timeIntervalSince1970: (Date().timeIntervalSince1970 + 86_400.0 * 30.0).rounded())
+        try "second, longer".write(toFile: path, atomically: false, encoding: .utf8)
+        try fm.setAttributes([FileAttributeKey.modificationDate: later], ofItemAtPath: path)
+
+        let attrs = try fm.attributesOfItem(atPath: path)
+        let modified = try XCTUnwrap(attrs[FileAttributeKey.modificationDate] as? Date)
+        XCTAssertEqual(modified.timeIntervalSince1970, later.timeIntervalSince1970, accuracy: 1.0)
+        XCTAssertGreaterThan(modified.timeIntervalSince1970 - created.timeIntervalSince1970, 86_400.0)
+    }
+
+    // VDS fork (vds.1): the size reads as Int64 on both platforms (NSNumber on Apple, Long on Skip).
+    func testFileSizeReadsAsInt64() throws {
+        let fm = FileManager.default
+        let path = NSTemporaryDirectory() + "vds-size-\(UUID().uuidString).bin"
+        defer { try? fm.removeItem(atPath: path) }
+        XCTAssertTrue(fm.createFile(atPath: path, contents: "seven!!".data(using: .utf8), attributes: nil))
+        let attrs = try fm.attributesOfItem(atPath: path)
+        XCTAssertEqual(attrs[FileAttributeKey.size] as? Int64, Int64(7))
+    }
 }

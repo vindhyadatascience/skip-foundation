@@ -10,7 +10,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/skiptools/skip.git", from: "1.9.6"),
-        .package(url: "https://github.com/skiptools/skip-lib.git", from: "1.4.1"),
+        // VDS fork: our SkipLib (O(1) Set.insert and Array.last, RNABrowser-fiea.15/.16).
+        .package(url: "https://github.com/vindhyadatascience/skip-lib.git", exact: "1.4.4+vds.1"),
     ],
     targets: [
         .target(name: "SkipFoundation", dependencies: [.product(name: "SkipLib", package: "skip-lib")], plugins: [.plugin(name: "skipstone", package: "skip")]),
