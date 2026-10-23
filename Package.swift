@@ -10,8 +10,9 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/skiptools/skip.git", from: "1.9.6"),
-        // VDS fork: our SkipLib (O(1) Set.insert and Array.last, RNABrowser-fiea.15/.16).
-        .package(url: "https://github.com/vindhyadatascience/skip-lib.git", exact: "1.4.4+vds.2"),
+        // VDS fork: immutable source pin; SwiftPM ignores +build metadata when matching versions.
+        // Tag 1.4.4+vds.2: canonical Set lookup/algebra and constant-time Array.last.
+        .package(url: "https://github.com/vindhyadatascience/skip-lib.git", revision: "e293e526ec18519caf9f6037096963450555820d"),
     ],
     targets: [
         .target(name: "SkipFoundation", dependencies: [.product(name: "SkipLib", package: "skip-lib")], plugins: [.plugin(name: "skipstone", package: "skip")]),
