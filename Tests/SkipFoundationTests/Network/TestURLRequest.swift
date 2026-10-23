@@ -67,6 +67,27 @@ class TestURLRequest : XCTestCase {
         request.addValue("text/html", forHTTPHeaderField: "Accept")
         XCTAssertEqual(request.allHTTPHeaderFields?["Accept"], "application/xml,text/html")
     }
+
+    func test_headerFieldReplacementUsesLatestSpellingExceptAccept() {
+        var request = URLRequest(url: url)
+        request.setValue("one", forHTTPHeaderField: "x-custom")
+        XCTAssertEqual(request.allHTTPHeaderFields?["x-custom"], "one")
+        request.setValue("two", forHTTPHeaderField: "X-CUSTOM")
+        XCTAssertNil(request.allHTTPHeaderFields?["x-custom"])
+        XCTAssertEqual(request.allHTTPHeaderFields?["X-CUSTOM"], "two")
+
+        request.allHTTPHeaderFields = ["x-private-case": "seed", "X-Unrelated": "keep"]
+        request.setValue("replacement", forHTTPHeaderField: "X-PRIVATE-CASE")
+        XCTAssertNil(request.allHTTPHeaderFields?["x-private-case"])
+        XCTAssertEqual(request.allHTTPHeaderFields?["X-PRIVATE-CASE"], "replacement")
+        XCTAssertEqual(request.allHTTPHeaderFields?["X-Unrelated"], "keep")
+
+        request.setValue("first", forHTTPHeaderField: "accept")
+        request.setValue("second", forHTTPHeaderField: "ACCEPT")
+        XCTAssertEqual(request.allHTTPHeaderFields?["Accept"], "second")
+        XCTAssertNil(request.allHTTPHeaderFields?["accept"])
+        XCTAssertNil(request.allHTTPHeaderFields?["ACCEPT"])
+    }
     
     func test_copy() {
         var mutableRequest = URLRequest(url: url)
@@ -252,7 +273,7 @@ class TestURLRequest : XCTestCase {
             "Connect": "CONNECT",
             "cOnNeCt": "CONNECT",
             "OPTIONS": "OPTIONS",
-            "options": "options",
+            "options": "OPTIONS",
             "TRACE": "TRACE",
             "trace": "trace",
             "PATCH": "PATCH",
