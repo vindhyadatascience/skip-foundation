@@ -237,6 +237,14 @@ public struct URLQueryItem : Hashable, Equatable, Sendable {
     public var name: String
     public var value: String?
 
+    // Foundation declares this initializer public. The synthesized memberwise initializer is
+    // internal, so without it other modules cannot resolve `URLQueryItem(name:value:)`'s type
+    // (e.g. inside `items.contains(URLQueryItem(...))`).
+    public init(name: String, value: String?) {
+        self.name = name
+        self.value = value
+    }
+
     static func from(_ string: String?) -> [URLQueryItem]? {
         guard let string, !string.isEmpty else {
             return nil
