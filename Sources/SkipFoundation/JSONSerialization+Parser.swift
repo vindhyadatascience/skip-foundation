@@ -3,87 +3,18 @@
 #if SKIP
 
 internal class JSONParser {
-    var reader: org.json.JSONTokener
+    private let parser: VDSJSONStreamParser
+
+    init(data: Data) {
+        parser = VDSJSONStreamParser(data.platformValue)
+    }
 
     init(bytes: [UInt8]) {
-        self.reader = org.json.JSONTokener(String(data: Data(bytes), encoding: .utf8) ?? "")
+        parser = VDSJSONStreamParser(Data(bytes).platformValue)
     }
 
-    public func parseJSONValue() throws -> JSONValue {
-        try createJSONValue(from: reader.nextValue())
-    }
-
-    public func parseSwiftValue() throws -> Any {
-        try createSwiftValue(from: reader.nextValue())
-    }
-
-    /// https://developer.android.com/reference/org/json/JSONTokener#nextValue()
-    /// a JSONObject, JSONArray, String, Boolean, Integer, Long, Double or JSONObject#NULL.
-    func createSwiftValue(from token: Any) throws -> Any {
-        if token === nil || token === org.json.JSONObject.NULL {
-            return NSNull.null
-        } else {
-            switch token {
-            case let bd as java.math.BigDecimal: // happens with org.json package, but not Android's version
-                if let dbl = Double(bd.toString()) {
-                    return dbl
-                } else {
-                    throw JSONError.numberIsNotRepresentableInSwift(parsed: bd.toString())
-                }
-            case let bol as Boolean:
-                return bol == true
-            case let obj as org.json.JSONObject:
-                var dict = Dictionary<String, Any>()
-                for key in obj.keys() {
-                    dict[key] = createSwiftValue(from: obj.get(key))
-                }
-                return dict
-            case let arr as org.json.JSONArray:
-                var array = Array<Any>()
-                for i in 0..<arr.length() {
-                    array.append(createSwiftValue(from: arr.get(i)))
-                }
-                return array
-            default:
-                return token
-            }
-        }
-    }
-
-    func createJSONValue(from token: Any) -> JSONValue {
-        if token === nil || token === org.json.JSONObject.NULL {
-            return JSONValue.null
-        } else {
-            switch token {
-            case let str as String:
-                return JSONValue.string(str)
-            case let lng as Long:
-                return JSONValue.number(lng.toString())
-            case let int as Integer:
-                return JSONValue.number(int.toString())
-            case let dbl as Double:
-                return JSONValue.number(dbl.toString())
-            case let bd as java.math.BigDecimal: // happens with org.json package, but not Android's version
-                return JSONValue.number(bd.toString())
-            case let bol as Boolean:
-                return JSONValue.bool(bol)
-            case let obj as org.json.JSONObject:
-                var dict = Dictionary<String, JSONValue>()
-                for key in obj.keys() {
-                    dict[key] = createJSONValue(from: obj.get(key))
-                }
-                return JSONValue.object(dict)
-            case let arr as org.json.JSONArray:
-                var array = Array<JSONValue>()
-                for i in 0..<arr.length() {
-                    array.append(createJSONValue(from: arr.get(i)))
-                }
-                return JSONValue.array(array)
-            default:
-                fatalError("Unhandled JSON type: \(type(of: token))")
-            }
-        }
-    }
+    public func parseJSONValue() throws -> JSONValue { return try parser.parseJSONValue() }
+    public func parseSwiftValue(exactNumbers: Bool = false) throws -> Any { return try parser.parseSwiftValue(exactNumbers) }
 }
 
 /// Mimics the constructor `UInt8(ascii:)`

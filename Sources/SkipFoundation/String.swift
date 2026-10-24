@@ -193,6 +193,19 @@ extension String {
     }
 }
 
+/// Explicit locales are opt-in; nil preserves locale-neutral numeric output.
+public func String(format: String, locale: Locale?, _ arguments: Any...) -> String {
+    let values = java.util.ArrayList<Any>()
+    for argument in arguments { values.add(argument) }
+    // SKIP REPLACE: return java.lang.String.format(locale?.platformValue ?: java.util.Locale.ROOT, format.kotlinFormatString, *values.toTypedArray())
+    return java.lang.String.format(locale?.platformValue ?? java.util.Locale.ROOT, format.kotlinFormatString, values.toArray())
+}
+
+public func String(format: String, locale: Locale?, arguments: [Any]) -> String {
+    // SKIP REPLACE: return java.lang.String.format(locale?.platformValue ?: java.util.Locale.ROOT, format.kotlinFormatString, *arguments.toList().toTypedArray())
+    return java.lang.String.format(locale?.platformValue ?? java.util.Locale.ROOT, format.kotlinFormatString, arguments.toList().toTypedArray())
+}
+
 public func String(data: Data, encoding: StringEncoding) -> String? {
     return java.lang.String(data.platformValue, encoding.rawValue) as kotlin.String?
 }

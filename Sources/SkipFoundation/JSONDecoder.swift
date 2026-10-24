@@ -120,8 +120,8 @@ open class JSONDecoder {
     // Our TopLevelDecoder superclass handles the decode calls. We just have to produce the decoder
     public override func decoder(from data: Data) -> Decoder {
         do {
-            var parser = JSONParser(bytes: data.bytes)
-            let json = try parser.parseSwiftValue()
+            let parser = try JSONSerialization.makeParser(data: data)
+            let json = try parser.parseSwiftValue(exactNumbers: true)
             return JSONDecoderImpl(userInfo: self.userInfo, from: json, codingPath: [], options: self.options)
         } catch let error as JSONError {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "The given data was not valid JSON.", underlyingError: error))
@@ -282,6 +282,7 @@ private struct JSONDecoderImpl: Decoder {
     }
 
     private func unwrapDecimal() throws -> Decimal {
+        if let decimal = self.json as? java.math.BigDecimal { return decimal }
         let container = JSONSingleValueDecodingContainer(impl: self, codingPath: self.codingPath, json: self.json)
         do {
             let string = try container.decode(String.self)
@@ -824,6 +825,9 @@ private func decodeAsNil(_ value: JSONDecoderValue, forKey key: CodingKey? = nil
 }
 
 private func decodeAsBool(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Bool {
+    if value is NSNull {
+        throw DecodingError.valueNotFound(Bool.self, DecodingError.Context(codingPath: impl.codingPath(with: key), debugDescription: "Expected Bool but found null."))
+    }
     let bool = value as? Bool
     guard let bool else {
         throw impl.createTypeMismatchError(type: Bool.self, for: key, value: value)
@@ -832,7 +836,10 @@ private func decodeAsBool(_ value: JSONDecoderValue, forKey key: CodingKey? = ni
 }
 
 private func decodeAsString(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> String {
-    let string: String? = value is NSNull ? nil : value.toString()
+    if value is NSNull {
+        throw DecodingError.valueNotFound(String.self, DecodingError.Context(codingPath: impl.codingPath(with: key), debugDescription: "Expected String but found null."))
+    }
+    let string = value as? String
     guard let string else {
         throw impl.createTypeMismatchError(type: String.self, value: value)
     }
@@ -840,56 +847,81 @@ private func decodeAsString(_ value: JSONDecoderValue, forKey key: CodingKey? = 
 }
 
 private func decodeAsDouble(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Double {
-    return try checkNumericOptional(Double(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    if let text = value as? String {
+        switch impl.options.nonConformingFloatDecodingStrategy {
+        case .throw: break
+        case .convertFromString(let positive, let negative, let nan):
+            if text == positive { return Double.infinity }
+            if text == negative { return -Double.infinity }
+            if text == nan { return Double.nan }
+        }
+    }
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: Double.self)
+    return try checkNumericOptional(jsonFiniteDouble(number), forKey: key, impl: impl)
 }
 
 private func decodeAsFloat(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Float {
-    return try checkNumericOptional(Float(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    if value is String { return Float(try decodeAsDouble(value, forKey: key, impl: impl)) }
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: Float.self)
+    return try checkNumericOptional(jsonFiniteFloat(number), forKey: key, impl: impl)
 }
 
 private func decodeAsInt(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Int {
-    return try checkNumericOptional(Int(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: Int.self)
+    return try checkNumericOptional(jsonExactInt(number), forKey: key, impl: impl)
 }
 
 private func decodeAsInt8(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Int8 {
-    return try checkNumericOptional(Int8(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: Int8.self)
+    return try checkNumericOptional(jsonExactInt8(number), forKey: key, impl: impl)
 }
 
 private func decodeAsInt16(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Int16 {
-    return try checkNumericOptional(Int16(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: Int16.self)
+    return try checkNumericOptional(jsonExactInt16(number), forKey: key, impl: impl)
 }
 
 private func decodeAsInt32(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Int32 {
-    return try checkNumericOptional(Int32(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: Int32.self)
+    return try checkNumericOptional(jsonExactInt32(number), forKey: key, impl: impl)
 }
 
 private func decodeAsInt64(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Int64 {
-    return try checkNumericOptional(Int64(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: Int64.self)
+    return try checkNumericOptional(jsonExactInt64(number), forKey: key, impl: impl)
 }
 
 private func decodeAsUInt(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> UInt {
-    return try checkNumericOptional(UInt(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: UInt.self)
+    return try checkNumericOptional(jsonExactUInt(number), forKey: key, impl: impl)
 }
 
 private func decodeAsUInt8(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> UInt8 {
-    return try checkNumericOptional(UInt8(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: UInt8.self)
+    return try checkNumericOptional(jsonExactUInt8(number), forKey: key, impl: impl)
 }
 
 private func decodeAsUInt16(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> UInt16 {
-    return try checkNumericOptional(UInt16(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: UInt16.self)
+    return try checkNumericOptional(jsonExactUInt16(number), forKey: key, impl: impl)
 }
 
 private func decodeAsUInt32(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> UInt32 {
-    return try checkNumericOptional(UInt32(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: UInt32.self)
+    return try checkNumericOptional(jsonExactUInt32(number), forKey: key, impl: impl)
 }
 
 private func decodeAsUInt64(_ value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> UInt64 {
-    return try checkNumericOptional(UInt64(decodeNumeric(value, forKey: key, impl: impl)), forKey: key, impl: impl)
+    let number = try decodeNumeric(value, forKey: key, impl: impl, expectedType: UInt64.self)
+    return try checkNumericOptional(jsonExactUInt64(number), forKey: key, impl: impl)
 }
 
-private func decodeNumeric(value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> Number {
+private func decodeNumeric(value: JSONDecoderValue, forKey key: CodingKey? = nil, impl: JSONDecoderImpl, expectedType: Any.Type) throws -> Number {
+    if value is NSNull {
+        throw DecodingError.valueNotFound(expectedType, DecodingError.Context(codingPath: impl.codingPath(with: key), debugDescription: "Expected a number but found null."))
+    }
     guard let number = value as? Number else {
-        throw DecodingError.typeMismatch(Int.self, DecodingError.Context(
+        throw DecodingError.typeMismatch(expectedType, DecodingError.Context(
             codingPath: impl.codingPath(with: key), debugDescription: "Expected to decode number but found \(value) instead."
         ))
     }
@@ -898,7 +930,7 @@ private func decodeNumeric(value: JSONDecoderValue, forKey key: CodingKey? = nil
 
 private func checkNumericOptional<T>(_ value: T?, forKey key: CodingKey? = nil, impl: JSONDecoderImpl) throws -> T {
     guard let value else {
-        throw DecodingError.typeMismatch(Int.self, DecodingError.Context(codingPath: impl.codingPath(with: key), debugDescription: "Unable to parse as expected numeric type"))
+        throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: impl.codingPath(with: key), debugDescription: "Parsed JSON number is not representable in the requested type."))
     }
     return value
 }

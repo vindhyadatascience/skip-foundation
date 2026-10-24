@@ -8,6 +8,8 @@
 // @_disfavoredOverload support to the transpiler and its function call match scoring
 
 public final class LocalizedStringResource: Hashable {
+    public typealias StringInterpolation = StringLocalizationValue.StringInterpolation
+
     public let keyAndValue: String.LocalizationValue
     public var defaultValue: String.LocalizationValue? = nil
     public var table: String? = nil
@@ -22,6 +24,13 @@ public final class LocalizedStringResource: Hashable {
 
     public init(stringLiteral: String) {
         self.keyAndValue = String.LocalizationValue(stringLiteral)
+        self.bundle = .main
+    }
+
+    // Preserve typed interpolation without changing overloaded string-literal selection.
+    // The transpiler uses this constructor for a contextually typed resource literal.
+    public init(stringInterpolation: StringInterpolation) {
+        self.keyAndValue = String.LocalizationValue(stringInterpolation: stringInterpolation)
         self.bundle = .main
     }
 

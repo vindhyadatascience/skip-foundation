@@ -80,7 +80,7 @@ public final class MarkdownNode {
     public let interpolationIndexes: List<Int>?
     public let children: List<MarkdownNode>?
 
-    public func format(_ interpolations: List<AnyHashable>?) -> MarkdownNode {
+    public func format(_ interpolations: List<Any>?) -> MarkdownNode {
         guard let interpolations, !interpolations.isEmpty() else {
             return self
         }
@@ -88,7 +88,7 @@ public final class MarkdownNode {
         return MarkdownNode(type: type, string: string, interpolationIndexes: nil, children: children?.map { $0.format(interpolations) })
     }
 
-    public func formattedString(_ interpolations: List<AnyHashable>?) -> String? {
+    public func formattedString(_ interpolations: List<Any>?) -> String? {
         guard let string, let interpolations else {
             return self.string
         }
@@ -97,7 +97,7 @@ public final class MarkdownNode {
         guard let interpolationIndexes else {
             return string.replace("%%", "%")
         }
-        let stringInterpolations = mutableListOf<AnyHashable>()
+        let stringInterpolations = mutableListOf<Any>()
         for index in interpolationIndexes {
             if interpolations.count() >= index {
                 stringInterpolations.add(interpolations[index - 1])

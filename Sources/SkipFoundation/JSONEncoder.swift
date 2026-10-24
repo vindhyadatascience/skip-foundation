@@ -151,8 +151,7 @@ open class JSONEncoder {
             throw EncodingError.invalidValue("?", EncodingError.Context(codingPath: [], debugDescription: "Top-level did not encode any values."))
         }
         let writer = JSONValue.Writer(options: self.outputFormatting)
-        let bytes = writer.writeValue(value)
-        return Data(bytes: bytes)
+        return writer.writeValue(value)
     }
 }
 
@@ -163,59 +162,66 @@ private enum JSONFuture {
     case nestedObject(RefObject)
 
     class RefArray {
-        private(set) var array: [JSONFuture] = []
+        private let array: java.util.ArrayList<JSONFuture> = java.util.ArrayList<JSONFuture>()
 
         init() {
         }
 
         func append(_ element: JSONValue) {
-            self.array.append(.value(element))
+            self.array.add(JSONFuture.value(element))
+            return
         }
 
         func append(_ encoder: JSONEncoderImpl) {
-            self.array.append(.encoder(encoder))
+            self.array.add(JSONFuture.encoder(encoder))
+            return
         }
 
         func appendArray() -> RefArray {
             let array = RefArray()
-            self.array.append(.nestedArray(array))
+            self.array.add(JSONFuture.nestedArray(array))
             return array
         }
 
         func appendObject() -> RefObject {
             let object = RefObject()
-            self.array.append(.nestedObject(object))
+            self.array.add(JSONFuture.nestedObject(object))
             return object
         }
 
         var values: [JSONValue] {
-            self.array.map { future in
+            var result: [JSONValue] = []
+            var index = 0
+            let count: Int = array.size
+            while index < count {
+                let future: JSONFuture = array.get(index)
                 switch future {
-                case .value(let value):
-                    return value
-                case .nestedArray(let array):
-                    return JSONValue.array(array.values)
-                case .nestedObject(let obj):
-                    return JSONValue.object(obj.values)
-                case .encoder(let encoder):
-                    return encoder.value ?? .object([:])
+                case .value(let value): result.append(value)
+                case .nestedArray(let array): result.append(JSONValue.array(array.values))
+                case .nestedObject(let object): result.append(JSONValue.object(object.values))
+                case .encoder(let encoder): result.append(encoder.value ?? JSONValue.object([:]))
                 }
+                index += 1
             }
+            return result
         }
+
+        var count: Int { array.size }
     }
 
     class RefObject {
-        private(set) var dict: [String: JSONFuture] = [:]
+        private let dict: java.util.LinkedHashMap<String, JSONFuture> = java.util.LinkedHashMap<String, JSONFuture>()
 
         init() {
         }
 
         func set(_ value: JSONValue, for key: String) {
-            self.dict[key] = .value(value)
+            self.dict[key] = JSONFuture.value(value)
         }
 
         func setArray(for key: String) -> RefArray {
-            switch self.dict[key] {
+            let future: JSONFuture? = self.dict[key]
+            switch future {
             case .encoder:
                 preconditionFailure("For key \"\(key)\" an encoder has already been created.")
             case .nestedObject:
@@ -224,13 +230,14 @@ private enum JSONFuture {
                 return array
             default: // .value, nil:
                 let array = RefArray()
-                dict[key] = .nestedArray(array)
+                dict[key] = JSONFuture.nestedArray(array)
                 return array
             }
         }
 
         func setObject(for key: String) -> RefObject {
-            switch self.dict[key] {
+            let future: JSONFuture? = self.dict[key]
+            switch future {
             case .encoder:
                 preconditionFailure("For key \"\(key)\" an encoder has already been created.")
             case .nestedObject(let obj):
@@ -239,13 +246,14 @@ private enum JSONFuture {
                 preconditionFailure("For key \"\(key)\" a unkeyed container has already been created.")
             default: // .value, nil:
                 let object = RefObject()
-                dict[key] = .nestedObject(object)
+                dict[key] = JSONFuture.nestedObject(object)
                 return object
             }
         }
 
         func set(_ encoder: JSONEncoderImpl, for key: String) {
-            switch self.dict[key] {
+            let future: JSONFuture? = self.dict[key]
+            switch future {
             case .encoder:
                 preconditionFailure("For key \"\(key)\" an encoder has already been created.")
             case .nestedObject:
@@ -253,23 +261,24 @@ private enum JSONFuture {
             case .nestedArray:
                 preconditionFailure("For key \"\(key)\" a unkeyed container has already been created.")
             default: // .value, nil:
-                dict[key] = .encoder(encoder)
+                dict[key] = JSONFuture.encoder(encoder)
             }
         }
 
         var values: [String: JSONValue] {
-            self.dict.mapValues { future in
+            var result: [String: JSONValue] = [:]
+            for rawKey in dict.keys {
+                let key: String = rawKey
+                let stored: JSONFuture? = dict[key]
+                guard let future = stored else { continue }
                 switch future {
-                case .value(let value):
-                    return value
-                case .nestedArray(let array):
-                    return JSONValue.array(array.values)
-                case .nestedObject(let obj):
-                    return JSONValue.object(obj.values)
-                case .encoder(let encoder):
-                    return encoder.value ?? JSONValue.object([:])
+                case .value(let value): result[key] = value
+                case .nestedArray(let array): result[key] = JSONValue.array(array.values)
+                case .nestedObject(let object): result[key] = JSONValue.object(object.values)
+                case .encoder(let encoder): result[key] = encoder.value ?? JSONValue.object([:])
                 }
             }
+            return result
         }
     }
 }
@@ -367,6 +376,18 @@ extension _SpecialTreatmentEncoder {
     // SKIP DECLARE: fun wrapFloat(float: Any, for_: CodingKey?): JSONValue
     func wrapFloat<F: FloatingPoint & CustomStringConvertible>(_ float: F, for additionalKey: CodingKey?) throws -> JSONValue {
 
+        // SKIP REPLACE: val numeric = (float as Number).toDouble()
+        let numeric = Double(float.description) ?? Double.nan
+        if !numeric.isFinite {
+            switch options.nonConformingFloatEncodingStrategy {
+            case .throw:
+                var path = self.codingPath
+                if let key = additionalKey { path.append(key) }
+                throw EncodingError.invalidValue(float, EncodingError.Context(codingPath: path, debugDescription: "Non-finite values cannot be represented in JSON."))
+            case .convertToString(let positive, let negative, let nan):
+                return .string(numeric.isNaN ? nan : (numeric > 0 ? positive : negative))
+            }
+        }
         var string = float.description
         if string.hasSuffix(".0") {
             string = String(string.dropLast(2))
@@ -602,7 +623,7 @@ private struct JSONUnkeyedEncodingContainer: UnkeyedEncodingContainerProtocol, _
     let codingPath: [CodingKey]
 
     var count: Int {
-        self.array.array.count
+        self.array.count
     }
     private var firstValueWritten: Bool = false
     fileprivate var options: JSONEncoder._Options {
@@ -817,6 +838,15 @@ private struct JSONSingleValueEncodingContainer: SingleValueEncodingContainerPro
     }
 }
 
+internal final class JSONByteBuffer {
+    let output: java.io.ByteArrayOutputStream = java.io.ByteArrayOutputStream()
+    func append(_ value: UInt8) { output.write(Int(value)) }
+    func append(contentsOf values: [UInt8]) {
+        for value in values { output.write(Int(value)) }
+    }
+    func data() -> Data { Data(platformValue: output.toByteArray()) }
+}
+
 // SKIP NOWARN
 extension JSONValue {
     fileprivate struct Writer {
@@ -826,18 +856,18 @@ extension JSONValue {
             self.options = options
         }
 
-        func writeValue(_ value: JSONValue) -> [UInt8] {
-            var bytes = [UInt8]()
+        func writeValue(_ value: JSONValue) -> Data {
+            let bytes = JSONByteBuffer()
             if self.options.contains(JSONEncoder.OutputFormatting.prettyPrinted) {
-                self.writeValuePretty(value, into: &bytes)
+                self.writeValuePretty(value, into: bytes)
             }
             else {
-                self.writeValue(value, into: &bytes)
+                self.writeValue(value, into: bytes)
             }
-            return bytes
+            return bytes.data()
         }
 
-        private func writeValue(_ value: JSONValue, into bytes: inout [UInt8]) {
+        private func writeValue(_ value: JSONValue, into bytes: JSONByteBuffer) {
             switch value {
             case JSONValue.null:
                 bytes.append(contentsOf: UInt8Array_null)
@@ -848,7 +878,7 @@ extension JSONValue {
                     bytes.append(contentsOf: UInt8Array_false)
                 }
             case JSONValue.string(let string):
-                self.encodeString(string, to: &bytes)
+                self.encodeString(string, to: bytes)
             case JSONValue.number(let string):
                 bytes.append(contentsOf: string.utf8)
             case JSONValue.array(let array):
@@ -856,39 +886,39 @@ extension JSONValue {
                 bytes.append(UInt8_openbracket)
                 // we don't like branching, this is why we have this extra
                 if let first = iterator.next() {
-                    self.writeValue(first, into: &bytes)
+                    self.writeValue(first, into: bytes)
                 }
                 while let item = iterator.next() {
                     bytes.append(UInt8_comma)
-                    self.writeValue(item, into:&bytes)
+                    self.writeValue(item, into:bytes)
                 }
                 bytes.append(UInt8_closebracket)
             case JSONValue.object(let dict):
                 if options.contains(JSONEncoder.OutputFormatting.sortedKeys) {
                     let sorted = Array(dict).sorted { $0.key < $1.key }
-                    self.writeObject(sorted, into: &bytes)
+                    self.writeObject(sorted, into: bytes)
                 } else {
-                    self.writeObject(Array(dict), into: &bytes)
+                    self.writeObject(Array(dict), into: bytes)
                 }
             }
         }
 
-        private func writeObject(_ object: [(key: String, value: JSONValue)], into bytes: inout [UInt8], depth: Int = 0) {
+        private func writeObject(_ object: [(key: String, value: JSONValue)], into bytes: JSONByteBuffer, depth: Int = 0) {
             var iterator = object.makeIterator()
             bytes.append(UInt8_openbrace)
             if let (key, value) = iterator.next() {
-                self.encodeString(key, to: &bytes)
+                self.encodeString(key, to: bytes)
                 bytes.append(UInt8_colon)
-                self.writeValue(value, into: &bytes)
+                self.writeValue(value, into: bytes)
             }
             while true {
                 if let (key, value) = iterator.next() {
                     bytes.append(UInt8_comma)
                     // key
-                    self.encodeString(key, to: &bytes)
+                    self.encodeString(key, to: bytes)
                     bytes.append(UInt8_colon)
 
-                    self.writeValue(value, into: &bytes)
+                    self.writeValue(value, into: bytes)
                 } else {
                     break
                 }
@@ -896,14 +926,14 @@ extension JSONValue {
             bytes.append(UInt8_closebrace)
         }
 
-        private func addInset(to bytes: inout [UInt8], depth: Int) {
+        private func addInset(to bytes: JSONByteBuffer, depth: Int) {
             for _ in 0..<depth {
                 bytes.append(UInt8_space)
                 bytes.append(UInt8_space)
             }
         }
 
-        private func writeValuePretty(_ value: JSONValue, into bytes: inout [UInt8], depth: Int = 0) {
+        private func writeValuePretty(_ value: JSONValue, into bytes: JSONByteBuffer, depth: Int = 0) {
             switch value {
             case .null:
                 bytes.append(contentsOf: UInt8Array_null)
@@ -914,132 +944,63 @@ extension JSONValue {
                     bytes.append(contentsOf: UInt8Array_false)
                 }
             case .string(let string):
-                self.encodeString(string, to: &bytes)
+                self.encodeString(string, to: bytes)
             case .number(let string):
                 bytes.append(contentsOf: string.utf8)
             case .array(let array):
                 var iterator = array.makeIterator()
                 bytes.append(contentsOf: [UInt8_openbracket, UInt8_newline])
                 if let first = iterator.next() {
-                    self.addInset(to: &bytes, depth: depth + 1)
-                    self.writeValuePretty(first, into: &bytes, depth: depth + 1)
+                    self.addInset(to: bytes, depth: depth + 1)
+                    self.writeValuePretty(first, into: bytes, depth: depth + 1)
                 }
                 while let item = iterator.next() {
                     bytes.append(contentsOf: [UInt8_comma, UInt8_newline])
-                    self.addInset(to: &bytes, depth: depth + 1)
-                    self.writeValuePretty(item, into: &bytes, depth: depth + 1)
+                    self.addInset(to: bytes, depth: depth + 1)
+                    self.writeValuePretty(item, into: bytes, depth: depth + 1)
                 }
                 bytes.append(UInt8_newline)
-                self.addInset(to: &bytes, depth: depth)
+                self.addInset(to: bytes, depth: depth)
                 bytes.append(UInt8_closebracket)
             case .object(let dict):
                 if options.contains(JSONEncoder.OutputFormatting.sortedKeys) {
                     let sorted = Array(dict).sorted { $0.key < $1.key }
-                    self.writePrettyObject(sorted, into: &bytes, depth: depth)
+                    self.writePrettyObject(sorted, into: bytes, depth: depth)
                 } else {
-                    self.writePrettyObject(Array(dict), into: &bytes, depth: depth)
+                    self.writePrettyObject(Array(dict), into: bytes, depth: depth)
                 }
             }
         }
 
-        private func writePrettyObject(_ object: [(key: String, value: JSONValue)], into bytes: inout [UInt8], depth: Int = 0) {
+        private func writePrettyObject(_ object: [(key: String, value: JSONValue)], into bytes: JSONByteBuffer, depth: Int = 0) {
             var iterator = object.makeIterator()
             bytes.append(contentsOf: [UInt8_openbrace, UInt8_newline])
             if let (key, value) = iterator.next() {
-                self.addInset(to: &bytes, depth: depth + 1)
-                self.encodeString(key, to: &bytes)
+                self.addInset(to: bytes, depth: depth + 1)
+                self.encodeString(key, to: bytes)
                 bytes.append(contentsOf: [UInt8_space, UInt8_colon, UInt8_space])
-                self.writeValuePretty(value, into: &bytes, depth: depth + 1)
+                self.writeValuePretty(value, into: bytes, depth: depth + 1)
             }
             while true {
                 if  let (key, value) = iterator.next() {
                     bytes.append(contentsOf: [UInt8_comma, UInt8_newline])
-                    self.addInset(to: &bytes, depth: depth + 1)
+                    self.addInset(to: bytes, depth: depth + 1)
                     // key
-                    self.encodeString(key, to: &bytes)
+                    self.encodeString(key, to: bytes)
                     bytes.append(contentsOf: [UInt8_space, UInt8_colon, UInt8_space])
                     // value
-                    self.writeValuePretty(value, into: &bytes, depth: depth + 1)
+                    self.writeValuePretty(value, into: bytes, depth: depth + 1)
                 } else {
                     break
                 }
             }
             bytes.append(UInt8_newline)
-            self.addInset(to: &bytes, depth: depth)
+            self.addInset(to: bytes, depth: depth)
             bytes.append(UInt8_closebrace)
         }
 
-        private func encodeString(_ string: String, to bytes: inout [UInt8]) {
-            bytes.append(UInt8(ascii: "\""))
-            let stringBytes = string.utf8
-            var startCopyIndex = stringBytes.startIndex
-            var nextIndex = startCopyIndex
-
-            while nextIndex != stringBytes.endIndex {
-                switch stringBytes[nextIndex] {
-                case UInt8(0) ..< UInt8(32), UInt8(ascii: "\""), UInt8(ascii: "\\"):
-                    // All Unicode characters may be placed within the
-                    // quotation marks, except for the characters that MUST be escaped:
-                    // quotation mark, reverse solidus, and the control characters (U+0000
-                    // through U+001F).
-                    // https://tools.ietf.org/html/rfc8259#section-7
-
-                    // copy the current range over
-                    bytes.append(contentsOf: stringBytes[startCopyIndex ..< nextIndex])
-                    switch stringBytes[nextIndex] {
-                    case UInt8(ascii: "\""): // quotation mark
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8_quote])
-                    case UInt8(ascii: "\\"): // reverse solidus
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8_backslash])
-                    case UInt8(0x08): // backspace
-                        // SKIP NOWARN
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8(ascii: "b")] as [UInt8])
-                    case UInt8(0x0C): // form feed
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8(ascii: "f")])
-                    case UInt8(0x0A): // line feed
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8(ascii: "n")])
-                    case UInt8(0x0D): // carriage return
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8(ascii: "r")])
-                    case UInt8(0x09): // tab
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8(ascii: "t")])
-                    default:
-                        func valueToAscii(_ value: UInt8) -> UInt8 {
-                            switch value {
-                            case UInt8(0) ... UInt8(9):
-                                return UInt8(value + UInt8(ascii: "0"))
-                            case UInt8(10) ... UInt8(15):
-                                return UInt8(value - UInt8(10) + UInt8(ascii: "a"))
-                            default:
-                                preconditionFailure()
-                            }
-                        }
-                        bytes.append(UInt8(ascii: "\\"))
-                        bytes.append(UInt8(ascii: "u"))
-                        bytes.append(UInt8(ascii: "0"))
-                        bytes.append(UInt8(ascii: "0"))
-                        let first = stringBytes[nextIndex] / UInt8(16)
-                        let remaining = stringBytes[nextIndex] % UInt8(16)
-                        bytes.append(valueToAscii(UInt8(first)))
-                        bytes.append(valueToAscii(UInt8(remaining)))
-                    }
-
-                    nextIndex = stringBytes.index(after: nextIndex)
-                    startCopyIndex = nextIndex
-                case UInt8(ascii: "/"):
-                    if options.contains(JSONEncoder.OutputFormatting.withoutEscapingSlashes) == false {
-                        bytes.append(contentsOf: stringBytes[startCopyIndex ..< nextIndex])
-                        bytes.append(contentsOf: [UInt8_backslash, UInt8(ascii: "/")])
-                        nextIndex = stringBytes.index(after: nextIndex)
-                        startCopyIndex = nextIndex
-                    } else {
-                        nextIndex = stringBytes.index(after: nextIndex)
-                    }
-                default:
-                    nextIndex = stringBytes.index(after: nextIndex)
-                }
-            }
-            bytes.append(contentsOf: stringBytes[startCopyIndex ..< nextIndex])
-            bytes.append(UInt8(ascii: "\""))
+        private func encodeString(_ string: String, to bytes: JSONByteBuffer) {
+            appendJSONQuotedString(bytes.output, string, !options.contains(JSONEncoder.OutputFormatting.withoutEscapingSlashes))
         }
     }
 }

@@ -65,6 +65,8 @@ open class JSONSerialization {
               }
             }
 
+            if obj is java.math.BigDecimal { return true }
+
             // object is a Double and is not NaN or infinity
             if let number = obj as? Double  {
                 return number.isFinite()
@@ -94,12 +96,17 @@ open class JSONSerialization {
             // object is Swift.Dictionary
             // SKIP NOWARN
             if let dictionary = obj as? [String: Any?] {
-                for (_, value) in dictionary {
-                    guard isValidJSONObjectInternal(value) else {
-                        return false
+                // Keep the key generic at this erased interop boundary. The
+                // runtime dictionary may contain raw or AnyHashable keys.
+                func isValidDictionary<Key: Hashable>(_ dictionary: [Key: Any?]) -> Bool {
+                    for (key, value) in dictionary {
+                        guard jsonObjectStringKey(key) != nil, isValidJSONObjectInternal(value) else {
+                            return false
+                        }
                     }
+                    return true
                 }
-                return true
+                return isValidDictionary(dictionary)
             }
 
             #if JSON_NOSKIP
@@ -128,14 +135,17 @@ open class JSONSerialization {
     }
 
     internal class func _data(withJSONObject value: Any, options opt: WritingOptions, stream: Bool) throws -> Data {
-        var jsonStr = [UInt8]()
+        let output = java.io.ByteArrayOutputStream()
 
         var writer = JSONWriter(
             options: opt,
             writer: { (str: String?) in
                 if let str {
-                    jsonStr.append(contentsOf: str.utf8)
+                    output.write(str.toByteArray(kotlin.text.Charsets.UTF_8))
                 }
+            },
+            stringWriter: { str in
+                appendJSONQuotedString(output, str, !opt.contains(WritingOptions.withoutEscapingSlashes))
             }
         )
 
@@ -159,9 +169,7 @@ open class JSONSerialization {
             try writer.serializeJSON(value)
         }
 
-        let count = jsonStr.count
-        let _ = count
-        return Data(jsonStr) // Data(bytes: &jsonStr, count: count)
+        return Data(platformValue: output.toByteArray())
     }
 
     open class func data(withJSONObject value: Any, options opt: WritingOptions = WritingOptions(rawValue: UInt(0))) throws -> Data {
@@ -170,21 +178,7 @@ open class JSONSerialization {
 
     open class func jsonObject(with data: Data, options opt: ReadingOptions = ReadingOptions(rawValue: UInt(0))) throws -> Any {
         do {
-            let bytes = data.bytes
-            let (encoding, advanceBy) = JSONSerialization.detectEncoding(bytes)
-            var parser: JSONParser
-            if encoding == .utf8 {
-                if advanceBy == 0 {
-                    parser = JSONParser(bytes: bytes)
-                } else {
-                    parser = JSONParser(bytes: Array(bytes[advanceBy..<bytes.count]))
-                }
-            } else {
-                guard let utf8String = String(bytes: Array(bytes[advanceBy..<bytes.count]), encoding: encoding) else {
-                    throw JSONError.cannotConvertInputDataToUTF8
-                }
-                parser = JSONParser(bytes: Array(utf8String.utf8))
-            }
+            let parser = try makeParser(data: data)
 
             let value = try parser.parseSwiftValue()
             if !opt.contains(.fragmentsAllowed), !(value is Array<Any> || value is Dictionary<AnyHashable, Any>) {
@@ -300,6 +294,25 @@ open class JSONSerialization {
 #endif
 #endif
 
+    internal class func makeParser(data: Data) throws -> JSONParser {
+        // Encoding detection needs only the first four bytes. Keep the input
+        // packed; do not materialize a boxed [UInt8] for the whole document.
+        let packed = data.platformValue
+        let prefix = Array(packed.take(4).map { $0.toUByte() })
+        let (encoding, advanceBy) = JSONSerialization.detectEncoding(prefix)
+        let payload = advanceBy == 0 ? data : Data(platformValue: packed.copyOfRange(advanceBy, packed.size))
+        let parser: JSONParser
+        if encoding == String.Encoding.utf8 {
+            parser = JSONParser(data: payload)
+        } else {
+            guard let text = String(data: payload, encoding: encoding), let utf8 = text.data(using: String.Encoding.utf8) else {
+                throw JSONError.cannotConvertInputDataToUTF8
+            }
+            parser = JSONParser(data: utf8)
+        }
+        return parser
+    }
+
     private static func detectEncoding(_ bytes: [UInt8]) -> (String.Encoding, Int) {
         // According to RFC8259, the text encoding in JSON must be UTF8 in nonclosed systems
         // https://tools.ietf.org/html/rfc8259#section-8.1
@@ -358,6 +371,12 @@ open class JSONSerialization {
 }
 
 //MARK: - JSONSerializer
+private func jsonObjectStringKey(_ key: Any?) -> String? {
+    if let string = key as? String { return string }
+    if let wrapped = key as? AnyHashable { return wrapped.base as? String }
+    return nil
+}
+
 private struct JSONWriter {
 
     var indent = 0
@@ -365,12 +384,15 @@ private struct JSONWriter {
     let sortedKeys: Bool
     let withoutEscapingSlashes: Bool
     let writer: (String?) -> Void
+    let stringWriter: (String) -> Void
 
-    init(options: JSONSerialization.WritingOptions, writer: @escaping (String?) -> Void) {
+    init(options: JSONSerialization.WritingOptions, writer: @escaping (String?) -> Void,
+         stringWriter: @escaping (String) -> Void) {
         pretty = options.contains(.prettyPrinted)
         sortedKeys = options.contains(.sortedKeys)
         withoutEscapingSlashes = options.contains(.withoutEscapingSlashes)
         self.writer = writer
+        self.stringWriter = stringWriter
     }
 
     mutating func serializeJSON(_ object: Any?) throws {
@@ -418,6 +440,8 @@ private struct JSONWriter {
             try serializeArray(array as Array<Any?>)
         case let dict as Dictionary<AnyHashable, Any?>:
             try serializeDictionary(dict as Dictionary<AnyHashable, Any?>)
+        case let num as java.math.BigDecimal:
+            writer(num.toString())
         case let num as Float:
             try serializeFloat(Double(num))
         case let num as Double:
@@ -439,36 +463,7 @@ private struct JSONWriter {
     }
 
     func serializeString(_ str: String) throws {
-        writer("\"")
-        for scalar in str { // TODO: str.unicodeScalars {
-            switch scalar {
-                case "\"":
-                    writer("\\\"") // U+0022 quotation mark
-                case "\\":
-                    writer("\\\\") // U+005C reverse solidus
-                case "/":
-                    if !withoutEscapingSlashes { writer("\\") }
-                    writer("/") // U+002F solidus
-//                case "\u{8}":
-//                    writer("\\b") // U+0008 backspace
-//                case "\u{c}":
-//                    writer("\\f") // U+000C form feed
-                case "\n":
-                    writer("\\n") // U+000A line feed
-                case "\r":
-                    writer("\\r") // U+000D carriage return
-                case "\t":
-                    writer("\\t") // U+0009 tab
-                // TODO
-//                case "\u{0}"..."\u{f}":
-//                    writer("\\u000\(String(scalar.value, radix: 16))") // U+0000 to U+000F
-//                case "\u{10}"..."\u{1f}":
-//                    writer("\\u00\(String(scalar.value, radix: 16))") // U+0010 to U+001F
-                default:
-                    writer(String(scalar))
-            }
-        }
-        writer("\"")
+        stringWriter(str)
     }
 
     private func serializeFloat(_ num: Double) throws {
@@ -511,7 +506,7 @@ private struct JSONWriter {
         writer("]")
     }
 
-    mutating func serializeDictionary(_ dict: Dictionary<AnyHashable, Any?>) throws {
+    mutating func serializeDictionary<Key: Hashable>(_ dict: Dictionary<Key, Any?>) throws {
         writer("{")
         if pretty {
             writer("\n")
@@ -523,7 +518,7 @@ private struct JSONWriter {
 
         var first = true
 
-        func serializeDictionaryElement(key: AnyHashable, value: Any?) throws {
+        func serializeDictionaryElement(key: Key, value: Any?) throws {
             if first {
                 first = false
             } else if pretty {
@@ -533,7 +528,7 @@ private struct JSONWriter {
                 writer(",")
             }
 
-            if let key = key as? String {
+            if let key = jsonObjectStringKey(key) {
                 try serializeString(key)
             } else {
                 throw NSError(domain: NSCocoaErrorDomain, code: CocoaError.propertyListReadCorrupt.rawValue, userInfo: [NSDebugDescriptionErrorKey : "NSDictionary key must be NSString"])
@@ -544,8 +539,8 @@ private struct JSONWriter {
 
         if sortedKeys {
             let elems = try dict.sorted(by: { a, b in
-                guard let a = a.key as? String,
-                    let b = b.key as? String else {
+                guard let a = jsonObjectStringKey(a.key),
+                    let b = jsonObjectStringKey(b.key) else {
                         throw NSError(domain: NSCocoaErrorDomain, code: CocoaError.propertyListReadCorrupt.rawValue, userInfo: [NSDebugDescriptionErrorKey : "NSDictionary key must be NSString"])
                 }
                 #if JSON_NOSKIP

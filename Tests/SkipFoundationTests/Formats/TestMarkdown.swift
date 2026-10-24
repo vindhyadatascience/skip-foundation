@@ -52,7 +52,7 @@ final class TestMarkdown: XCTestCase {
     func testEscapedPercentsAlongsideSubstitutions() {
         let node = MarkdownNode.from(string: "[Save %@ at 100%%](https://example.org/a%%20b)")!
         let link = node.children![0].children![0]
-        let values: List<AnyHashable> = listOf("today")
+        let values: List<Any> = listOf("today")
         XCTAssertEqual(link.formattedString(values), "https://example.org/a%20b")
         XCTAssertEqual(link.children![0].formattedString(values), "Save today at 100%")
     }

@@ -43,7 +43,9 @@ public struct StringLocalizationValue : ExpressibleByStringInterpolation {
 
         #if SKIP
         // public so it can be accessed from SkipUI
-        public let values: MutableList<AnyHashable> = mutableListOf()
+        // Raw Java Formatter arguments: numeric placeholders need Number values,
+        // not Swift AnyHashable wrappers. This is Kotlin-only interop storage.
+        public let values: MutableList<Any> = mutableListOf()
         #endif
         public var pattern = ""
 

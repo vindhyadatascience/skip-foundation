@@ -9,10 +9,10 @@ let package = Package(
         .library(name: "SkipFoundation", targets: ["SkipFoundation"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/skiptools/skip.git", from: "1.9.6"),
+        .package(url: "https://github.com/vindhyadatascience/skip.git", revision: "00434800e13a37955e72e4a6e3915531dc718978"),
         // VDS fork: immutable source pin; SwiftPM ignores +build metadata when matching versions.
-        // Tag 1.4.4+vds.2: canonical Set lookup/algebra and constant-time Array.last.
-        .package(url: "https://github.com/vindhyadatascience/skip-lib.git", revision: "e293e526ec18519caf9f6037096963450555820d"),
+        // Source alias 1.4.4+vds.3; immutable revision is authoritative.
+        .package(url: "https://github.com/vindhyadatascience/skip-lib.git", revision: "9242796bd40c4d8418cfb040f9493c2cf9ca7a4a"),
     ],
     targets: [
         .target(name: "SkipFoundation", dependencies: [.product(name: "SkipLib", package: "skip-lib")], plugins: [.plugin(name: "skipstone", package: "skip")]),

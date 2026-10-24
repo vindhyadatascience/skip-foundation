@@ -405,11 +405,17 @@ public class FileManager {
     }
 
     public func url(for directory: FileManager.SearchPathDirectory, in domain: FileManager.SearchPathDomainMask, appropriateFor url: URL?, create shouldCreate: Bool) throws -> URL {
-        let ctx = ProcessInfo.processInfo.androidContext
-        switch directory {
-        case .documentDirectory: return URL.documentsDirectory
-        case .cachesDirectory: return URL.cachesDirectory
+        guard domain.contains(.userDomainMask) else {
+            throw NSError(domain: NSCocoaErrorDomain, code: CocoaError.fileNoSuchFile.rawValue)
         }
+        let result: URL
+        switch directory {
+        case .documentDirectory: result = URL.documentsDirectory
+        case .cachesDirectory: result = URL.cachesDirectory
+        case .applicationSupportDirectory: result = URL.applicationSupportDirectory
+        }
+        if shouldCreate { try createDirectory(at: result, withIntermediateDirectories: true) }
+        return result
     }
 
     @available(*, unavailable)
@@ -417,9 +423,13 @@ public class FileManager {
         return nil
     }
 
-    @available(*, unavailable)
     public func urls(for directory: SearchPathDirectory, in domainMask: SearchPathDomainMask) -> [URL] {
-        return []
+        guard domainMask.contains(.userDomainMask) else { return [] }
+        switch directory {
+        case .documentDirectory: return [URL.documentsDirectory]
+        case .cachesDirectory: return [URL.cachesDirectory]
+        case .applicationSupportDirectory: return [URL.applicationSupportDirectory]
+        }
     }
 
     @available(*, unavailable)
@@ -567,16 +577,19 @@ public class FileManager {
     }
 
     public enum SearchPathDirectory : UInt {
-        case documentDirectory
-        case cachesDirectory
+        case documentDirectory = 9
+        case cachesDirectory = 13
+        case applicationSupportDirectory = 14
     }
 
-    public enum SearchPathDomainMask : UInt {
-        case userDomainMask = 1
-        //case localDomainMask = 2
-        //case networkDomainMask = 4
-        //case systemDomainMask = 8
-        //case allDomainMask = 0x0fff
+    public struct SearchPathDomainMask: OptionSet {
+        public let rawValue: UInt
+        public init(rawValue: UInt) { self.rawValue = rawValue }
+        public static let userDomainMask = SearchPathDomainMask(rawValue: UInt(1))
+        public static let localDomainMask = SearchPathDomainMask(rawValue: UInt(2))
+        public static let networkDomainMask = SearchPathDomainMask(rawValue: UInt(4))
+        public static let systemDomainMask = SearchPathDomainMask(rawValue: UInt(8))
+        public static let allDomainsMask = SearchPathDomainMask(rawValue: UInt(0x0fff))
     }
 
     public struct VolumeEnumerationOptions : OptionSet {

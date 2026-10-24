@@ -712,7 +712,9 @@ private func httpURLResponse(from response: Response, with url: URL) -> HTTPURLR
     let statusCode = response.code
     let httpVersion = response.protocol.toString()
     let headerDictionary = Dictionary(response.headers.toMap(), nocopy: true)
-    return HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: httpVersion, headerFields: headerDictionary)
+    // A completed OkHttp response provides valid HTTP metadata. Preserve the
+    // failable Foundation API while unwrapping its result at this adapter boundary.
+    return HTTPURLResponse(url: url, statusCode: statusCode, httpVersion: httpVersion, headerFields: headerDictionary)!
 }
 
 /// Use for non-HTTP requests.
