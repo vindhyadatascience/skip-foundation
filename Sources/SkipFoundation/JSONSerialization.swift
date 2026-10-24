@@ -372,9 +372,8 @@ open class JSONSerialization {
 
 //MARK: - JSONSerializer
 private func jsonObjectStringKey(_ key: Any?) -> String? {
-    if let string = key as? String { return string }
-    if let wrapped = key as? AnyHashable { return wrapped.base as? String }
-    return nil
+    // AnyHashable is a typealias again (RNABrowser-fiea.30): runtime keys are never boxed.
+    return key as? String
 }
 
 private struct JSONWriter {
