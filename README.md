@@ -2,6 +2,15 @@
 
 Foundation support for [Skip Lite](https://skip.dev) transpiled Swift.
 
+## Vindhya Data Science fork
+
+This is Vindhya Data Science's public fork of [skiptools/skip-foundation](https://github.com/skiptools/skip-foundation),
+carrying GeneFox patches on the `vds/1.4.8` branch. Releases are tagged `1.4.8-vds.N`, a SemVer
+prerelease, so each is a distinct version. The older `+vds.N` tags are kept, but SwiftPM ignores
+build metadata, so to it they are the same version as the upstream tag. The manifest declares its
+Skip dependencies with upstream's version ranges. Consumers mirror the skiptools URLs to these
+forks and pin every fork to an exact revision in their root package and lockfile.
+
 See what API is currently implemented [here](#foundation-support).
 
 ## About 
