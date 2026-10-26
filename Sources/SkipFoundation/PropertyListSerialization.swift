@@ -66,7 +66,7 @@ public class PropertyListSerialization {
                             dictStack[dictStack.count - 1][parentKey] = finishedDict
                         } else {
                             for (key, value) in finishedDict {
-                                /* SKIP NOWARN */
+                                // SKIP NOWARN
                                 if let stringsDict = value as? [String: Any],
                                    let icuString = convertStringsDictToICUString(stringsDict) {
                                     result[key] = icuString
@@ -96,7 +96,7 @@ public class PropertyListSerialization {
 
         var result: String = formatKey
 
-        /* SKIP NOWARN */
+        // SKIP NOWARN
         for (key, varDict) in stringsDict.compactMapValues({ $0 as? [String: Any] }) {
             guard let specType = varDict["NSStringFormatSpecTypeKey"] as? String, specType == "NSStringPluralRuleType"
             else {

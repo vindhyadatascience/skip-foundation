@@ -16,7 +16,7 @@
 
 #if SKIP
 
-/* SKIP NOWARN */
+// SKIP NOWARN(EXTENSION_MERGING)
 extension Calendar {
     struct SearchStepResult {
         var result: (Date, Bool)?
@@ -44,7 +44,7 @@ extension Calendar {
 }
 
 // MARK: - Date Matching
-/* SKIP NOWARN */
+// SKIP NOWARN(EXTENSION_MERGING)
 extension Calendar {
     private func _matchingDate(after startDate: Date, matching comps: DateComponents, direction: SearchDirection, matchingPolicy: MatchingPolicy, repeatedTimePolicy: RepeatedTimePolicy) throws -> Date? {
 
@@ -152,7 +152,7 @@ extension Calendar {
 }
 
 // MARK: - Component Matchers
-/* SKIP NOWARN */
+// SKIP NOWARN(EXTENSION_MERGING)
 extension Calendar {
     private func dateAfterMatchingEra(startingAt: Date, components: DateComponents, direction: SearchDirection, matchedEra: inout Bool) -> Date? {
 
@@ -1060,7 +1060,7 @@ extension Calendar {
 }
 
 // MARK: - Date Verification
-/* SKIP NOWARN */
+// SKIP NOWARN(EXTENSION_MERGING)
 extension Calendar {
     private func verifyAdvancingResult(_ next: Date, previous: Date, direction: Calendar.SearchDirection) throws {
         if (direction == .forward && next <= previous) || (direction == .backward && next >= previous) {
@@ -1078,7 +1078,7 @@ extension Calendar {
 }
 
 // MARK: - Date Adjustment
-/* SKIP NOWARN */
+// SKIP NOWARN(EXTENSION_MERGING)
 extension Calendar {
     private func _adjustedDate(_ unadjustedMatchDate: Date, startingAfter start: Date, allowStartDate: Bool = false, matching matchingComponents: DateComponents, adjustedMatchingComponents compsToMatch: DateComponents, matchingPolicy: MatchingPolicy, repeatedTimePolicy: RepeatedTimePolicy, direction: SearchDirection, inSearchingDate: Date, previouslyReturnedMatchDate: Date?) throws -> SearchStepResult {
 
@@ -1637,7 +1637,7 @@ extension Calendar {
 }
 
 // MARK: - Helpers
-/* SKIP NOWARN */
+// SKIP NOWARN(EXTENSION_MERGING)
 extension Calendar {
     private func dateIfEraHasYear(era: Int, year: Int) -> Date? {
         var dateComp = DateComponents()
