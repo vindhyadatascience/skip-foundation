@@ -11,7 +11,7 @@ final class VDSJSONDictionaryKeyTests: XCTestCase {
 
     func testRawAndErasedStringKeysSerializeThroughBothWriterOrders() throws {
         let raw: [String: Int] = ["z": 2, "a": 1]
-        let erased: [AnyHashable: Int] = [AnyHashable("z"): 2, AnyHashable("a"): 1]
+        let erased: [AnyHashable: Int] = [("z" as AnyHashable): 2, ("a" as AnyHashable): 1]
         let objects: [Any] = [raw, erased]
         let formats: [JSONSerialization.WritingOptions] = [[], [.sortedKeys], [.sortedKeys, .prettyPrinted]]
         for object in objects {
@@ -27,7 +27,7 @@ final class VDSJSONDictionaryKeyTests: XCTestCase {
 
     func testRawAndErasedNonStringKeysAreRejected() {
         let raw: [Int: Int] = [1: 2]
-        let erased: [AnyHashable: Int] = [AnyHashable(1): 2]
+        let erased: [AnyHashable: Int] = [(1 as AnyHashable): 2]
         let objects: [Any] = [raw, erased]
         for object in objects {
             XCTAssertFalse(JSONSerialization.isValidJSONObject(object))
@@ -47,11 +47,11 @@ final class VDSJSONDictionaryKeyTests: XCTestCase {
     }
 
     func testNestedStringKeysAreAcceptedAndNestedNonStringKeysAreRejected() throws {
-        let nested: [String: Any] = ["raw": ["a": 1], "erased": [AnyHashable("b"): 2]]
+        let nested: [String: Any] = ["raw": ["a": 1], "erased": [("b" as AnyHashable): 2]]
         XCTAssertTrue(JSONSerialization.isValidJSONObject(nested))
         let data = try JSONSerialization.data(withJSONObject: nested, options: [.sortedKeys])
         XCTAssertEqual(String(data: data, encoding: .utf8), #"{"erased":{"b":2},"raw":{"a":1}}"#)
-        let invalid: [String: Any] = ["nested": [AnyHashable(1): 2]]
+        let invalid: [String: Any] = ["nested": [(1 as AnyHashable): 2]]
         XCTAssertFalse(JSONSerialization.isValidJSONObject(invalid))
         #if SKIP
         expectFailure("Nested non-string JSON keys must fail") {
