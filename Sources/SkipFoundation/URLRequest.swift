@@ -10,7 +10,7 @@ public struct URLRequest : Hashable, CustomStringConvertible {
         didSet {
             if let method = httpMethod,
                 method != method.uppercased(),
-               ["GET", "PUT", "HEAD", "POST", "DELETE", "CONNECT"].contains(method.uppercased())
+               ["GET", "PUT", "HEAD", "POST", "DELETE", "CONNECT", "OPTIONS"].contains(method.uppercased())
             {
                 // standard method names are always uppercase
                 self.httpMethod = method.uppercased()
@@ -71,17 +71,6 @@ public struct URLRequest : Hashable, CustomStringConvertible {
         }
     }
 
-    // The lowercased header heys that are reserved
-    private static let reservedHeaderKeys = Set([
-        "Content-Length".lowercased(),
-        "Authorization".lowercased(),
-        "Connection".lowercased(),
-        "Host".lowercased(),
-        "Proxy-Authenticate".lowercased(),
-        "Proxy-Authorization".lowercased(),
-        "WWW-Authenticate".lowercased(),
-    ])
-
     private func transformHeaderKey(value: String) -> String {
         let lowerName = value.lowercased()
         if lowerName == "accept" {
@@ -91,27 +80,28 @@ public struct URLRequest : Hashable, CustomStringConvertible {
     }
 
     public mutating func setValue(_ value: String?, forHTTPHeaderField field: String) {
-        if Self.reservedHeaderKeys.contains(field) {
-            return // ignore reserved keys
+        // URLRequest stores every header name, including names a transport may manage.
+        // Replace/remove the logical field regardless of casing, preserving other values.
+        let lowerField = field.lowercased()
+        var fields: [String: String] = [:]
+        for (key, existing) in self.allHTTPHeaderFields ?? [:] {
+            if key.lowercased() != lowerField {
+                fields[key] = existing
+            }
         }
-        var fields = self.allHTTPHeaderFields ?? [:]
         fields[transformHeaderKey(field)] = value
         self.allHTTPHeaderFields = fields
     }
 
     public mutating func addValue(_ value: String, forHTTPHeaderField field: String) {
-        if Self.reservedHeaderKeys.contains(field) {
-            return // ignore reserved keys
-        }
-        let fieldKey = transformHeaderKey(field)
-        var fields = self.allHTTPHeaderFields ?? [:]
-        var fieldValue: String = value
-        // multiple vales are appended together with commas
-        if let existingValue = fields[fieldKey], !existingValue.isEmpty, !value.isEmpty {
+        let fieldValue: String
+        // Foundation keeps the comma even when either existing or appended text is empty.
+        if let existingValue = self.value(forHTTPHeaderField: field) {
             fieldValue = existingValue + "," + value
+        } else {
+            fieldValue = value
         }
-        fields[fieldKey] = fieldValue
-        self.allHTTPHeaderFields = fields
+        setValue(fieldValue, forHTTPHeaderField: field)
     }
 
     public enum Attribution : Int {

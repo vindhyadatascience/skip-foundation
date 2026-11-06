@@ -369,6 +369,7 @@ final class LocaleTests: XCTestCase {
                 XCTAssertEqual(try PropertyListSerialization.propertyList(from: Data(contentsOf: locstrs), format: nil) as? Dictionary<String, String>, [
                     "Done %@": "تم%@",
                     "Done": "تم",
+                    "lower-case %@ string": "lower-case %@ string",
                 ])
             } else if lang == "fr" {
                 XCTAssertEqual("Terminé", String(localized: String.LocalizationValue(stringLiteral: "Done"), bundle: lb))
@@ -386,6 +387,7 @@ final class LocaleTests: XCTestCase {
                 XCTAssertEqual(try PropertyListSerialization.propertyList(from: Data(contentsOf: locstrs), format: nil) as? Dictionary<String, String>, [
                     "Done %@": "Terminé %@",
                     "Done": "Terminé",
+                    "lower-case %@ string": "lower-case %@ string",
                     "Multi-Line String!\nWith some \"quoted\" text.": "Chaîne multi-ligne !\nAvec un peu de texte « entre guillemets »."
                 ])
 

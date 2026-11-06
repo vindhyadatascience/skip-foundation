@@ -109,10 +109,22 @@
     "lower-case %@ string" : {
       "extractionState" : "manual",
       "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lower-case %@ string"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "UPPER-CASE %@ STRING"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "lower-case %@ string"
           }
         }
       }
