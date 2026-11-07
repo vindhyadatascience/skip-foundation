@@ -74,6 +74,13 @@ public final class MarkdownNode {
         }
     }
 
+    /// Parse localized Markdown without discarding whitespace or literal HTML.
+    internal static func fromInline(string: String) -> MarkdownNode? {
+        let document = AttributedMarkdown.parse(source: string)
+        guard NodeType.hasMarkdown(document) else { return nil }
+        return MarkdownNode(document)
+    }
+
     public let type: NodeType
     /// The string is converted to use Kotlin/Java-style format specifiers.
     public let string: String?
