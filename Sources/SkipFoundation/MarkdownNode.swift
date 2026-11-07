@@ -88,7 +88,7 @@ public final class MarkdownNode {
     public let children: List<MarkdownNode>?
 
     public func format(_ interpolations: List<Any>?) -> MarkdownNode {
-        guard let interpolations, !interpolations.isEmpty() else {
+        guard let interpolations else {
             return self
         }
         let string = formattedString(interpolations)

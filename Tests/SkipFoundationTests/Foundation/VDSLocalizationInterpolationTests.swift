@@ -57,7 +57,7 @@ final class VDSLocalizationInterpolationTests: XCTestCase {
         let value: String.LocalizationValue = "**\(count)** \(name)"
         let attributed = AttributedString(localized: value, table: "VDS-Interop-NoTable", bundle: Bundle.module,
             locale: Locale.current)
-        XCTAssertEqual(attributed.string, "**7** fox")
+        XCTAssertEqual(attributed.string, "7 fox")
         let markdown = try XCTUnwrap(attributed.markdownNode)
         let paragraph = try XCTUnwrap(markdown.children?.first())
         let bold = try XCTUnwrap(paragraph.children?.first())
